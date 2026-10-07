@@ -1,0 +1,10 @@
+strands-agents[gemini]
+boto3
+python-dotenv
+fastapi
+uvicorn[standard]
+pydantic
+pytest
+pytest-asyncio
+playwright
+httpx

@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+app/data/runs/
+unipro.db
+node_modules/
+.next/
+__MACOSX/
+.DS_Store

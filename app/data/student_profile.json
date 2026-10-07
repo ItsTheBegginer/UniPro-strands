@@ -1,0 +1,66 @@
+{
+  "student_id": "demo-student",
+  "name": {
+    "value": "Alex Johnson",
+    "verified": true
+  },
+  "email": {
+    "value": "alex.johnson.demo@example.com",
+    "verified": true
+  },
+  "date_of_birth": {
+    "value": "2004-03-14",
+    "verified": true
+  },
+  "address": {
+    "value": "221B Example Street, Mumbai, India",
+    "verified": true
+  },
+  "education": {
+    "value": [
+      {
+        "institution": "Example Institute of Technology",
+        "degree": "B.Tech Computer Science"
+      }
+    ],
+    "verified": true
+  },
+  "graduation_year": {
+    "value": 2027,
+    "verified": true
+  },
+  "gpa": {
+    "value": 8.7,
+    "verified": true
+  },
+  "skills": {
+    "value": [
+      "Python",
+      "Machine Learning",
+      "JavaScript"
+    ],
+    "verified": true
+  },
+  "test_scores": {
+    "value": {
+      "SAT": 1480
+    },
+    "verified": true
+  },
+  "experience": {
+    "value": null,
+    "verified": false
+  },
+  "personal_statement": {
+    "value": "y",
+    "verified": true,
+    "source": "student"
+  },
+  "documents": {
+    "value": {
+      "resume": "app/data/documents/resume.pdf",
+      "transcript": "app/data/documents/transcript.pdf"
+    },
+    "verified": true
+  }
+}
