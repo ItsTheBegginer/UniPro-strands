@@ -72,27 +72,26 @@ class ApplicationSession:
 
 
 class SessionStore:
-    class SessionStore:
-        def __init__(self, base_dir: Path | None = None):
-            self.base_dir = Path(base_dir or os.getenv("UNIPRO_RUNS_DIR", _DEFAULT_DIR))
+    def __init__(self, base_dir: Path | None = None):
+        self.base_dir = Path(base_dir or os.getenv("UNIPRO_RUNS_DIR", _DEFAULT_DIR))
 
-        def _path(self, application_id: str) -> Path:
-            return self.base_dir / f"{application_id}.json"
+    def _path(self, application_id: str) -> Path:
+        return self.base_dir / f"{application_id}.json"
 
-        def exists(self, application_id: str) -> bool:
-            return self._path(application_id).exists()
+    def exists(self, application_id: str) -> bool:
+        return self._path(application_id).exists()
 
-        def list_ids(self) -> list[str]:
-            if not self.base_dir.exists():
-                return []
-            return sorted(p.stem for p in self.base_dir.glob("*.json"))
+    def list_ids(self) -> list[str]:
+        if not self.base_dir.exists():
+            return []
+        return sorted(p.stem for p in self.base_dir.glob("*.json"))
 
-        def load(self, application_id: str) -> ApplicationSession:
-            return ApplicationSession.from_dict(json.loads(self._path(application_id).read_text()))
+    def load(self, application_id: str) -> ApplicationSession:
+        return ApplicationSession.from_dict(json.loads(self._path(application_id).read_text()))
 
-        def save(self, session: ApplicationSession) -> None:
-            self.base_dir.mkdir(parents=True, exist_ok=True)
-            self._path(session.application_id).write_text(json.dumps(session.to_dict(), indent=2, default=str))
+    def save(self, session: ApplicationSession) -> None:
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._path(session.application_id).write_text(json.dumps(session.to_dict(), indent=2, default=str))
 
 def store() -> SessionStore:
     return SessionStore()
