@@ -42,8 +42,20 @@ sys.path.insert(0, str(ROOT))
 
 def isolate(tmp_path: Path, monkeypatch) -> None:
     """Point profile + run storage at a temp dir seeded from the real demo profile."""
+    import json
     profile = tmp_path / "student_profile.json"
     shutil.copy(ROOT / "app" / "data" / "student_profile.json", profile)
+    try:
+        data = json.loads(profile.read_text())
+        if "personal_statement" in data and isinstance(data["personal_statement"], dict):
+            data["personal_statement"]["verified"] = False
+            data["personal_statement"]["source"] = "ai_draft"
+        if "experience" in data and isinstance(data["experience"], dict):
+            data["experience"]["value"] = None
+            data["experience"]["verified"] = False
+        profile.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
     monkeypatch.setenv("UNIPRO_PROFILE_PATH", str(profile))
     monkeypatch.setenv("UNIPRO_RUNS_DIR", str(tmp_path / "runs"))
     from app.tools import state

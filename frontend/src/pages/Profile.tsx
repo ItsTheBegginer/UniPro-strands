@@ -1,131 +1,115 @@
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { api, type StudentProfile } from "../api"
-
-// ─── Field definitions ────────────────────────────────────────────────────────
-// Each entry maps a human label to the profile JSON key and an input hint.
-const SCALAR_FIELDS: { label: string; key: string; placeholder: string; type?: string }[] = [
-  { label: "Full Name",         key: "name",              placeholder: "e.g. Alex Johnson" },
-  { label: "Email Address",     key: "email",             placeholder: "e.g. alex@example.com", type: "email" },
-  { label: "Date of Birth",     key: "date_of_birth",     placeholder: "YYYY-MM-DD",             type: "date" },
-  { label: "Home Address",      key: "address",           placeholder: "Street, City, Country" },
-  { label: "GPA",               key: "gpa",               placeholder: "e.g. 3.9",               type: "number" },
-  { label: "Graduation Year",   key: "graduation_year",   placeholder: "e.g. 2026",              type: "number" },
-  { label: "SAT Score",         key: "test_scores",       placeholder: "e.g. 1480" },
-  { label: "Institution",       key: "education",         placeholder: "e.g. MIT" },
-  { label: "Degree",            key: "education_degree",  placeholder: "e.g. B.Tech Computer Science" },
-  { label: "Skills (comma-sep)",key: "skills",            placeholder: "Python, ML, TypeScript" },
-  { label: "Personal Statement",key: "personal_statement",placeholder: "Write your personal statement…" },
-]
+import { Navbar } from "../components/Navbar"
+import {
+  User,
+  GraduationCap,
+  FileText,
+  Upload,
+  CheckCircle2,
+  Trash2,
+  ArrowLeft,
+  CloudCheck,
+  AlertCircle,
+  Loader2,
+  Save,
+  BookOpen
+} from "lucide-react"
 
 const DOC_TYPES = [
-  { key: "resume",       label: "Resume / CV",        accept: ".pdf,.doc,.docx" },
-  { key: "transcript",   label: "Transcript",          accept: ".pdf" },
-  { key: "cover_letter", label: "Cover Letter",        accept: ".pdf,.doc,.docx" },
+  { key: "resume", label: "Resume / Curriculum Vitae", description: "PDF or Word document (under 10MB)", accept: ".pdf,.doc,.docx" },
+  { key: "transcript", label: "Official / Unofficial Transcript", description: "High school or undergraduate transcript (PDF)", accept: ".pdf" },
+  { key: "cover_letter", label: "Statement of Purpose / Cover Letter", description: "Optional supplementary letter (PDF)", accept: ".pdf,.doc,.docx" },
 ]
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function profileValueToString(key: string, raw: unknown): string {
-  if (raw == null) return ""
-
-  // test_scores: {SAT: 1480} → "1480"
-  if (key === "test_scores" && typeof raw === "object" && !Array.isArray(raw)) {
-    const sat = (raw as Record<string, unknown>)["SAT"]
-    return sat != null ? String(sat) : ""
-  }
-
-  // education: [{institution, degree}] → institution only (degree handled separately)
-  if (key === "education" && Array.isArray(raw)) {
-    const first = raw[0] as Record<string, unknown> | undefined
-    return first ? String(first["institution"] ?? "") : ""
-  }
-
-  // education_degree: derive from education array
-  if (key === "education_degree") return ""   // populated below separately
-
-  // skills: string[] → "Python, ML"
-  if (Array.isArray(raw)) return raw.join(", ")
-
-  return String(raw)
-}
-
-function buildSavePayload(form: Record<string, string>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-
-  for (const { key } of SCALAR_FIELDS) {
-    if (key === "education_degree") continue   // merged below
-    const v = form[key]?.trim()
-    if (!v) continue
-
-    if (key === "test_scores") {
-      out["test_scores"] = { SAT: Number(v) || v }
-      continue
-    }
-    if (key === "education") {
-      // Merge institution + degree into education array
-      const degree = form["education_degree"]?.trim() ?? ""
-      out["education"] = [{ institution: v, degree }]
-      continue
-    }
-    if (key === "skills") {
-      out["skills"] = v.split(",").map((s) => s.trim()).filter(Boolean)
-      continue
-    }
-    if (key === "gpa" || key === "graduation_year") {
-      out[key] = Number(v) || v
-      continue
-    }
-    out[key] = v
-  }
-
-  return out
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
 export function Profile() {
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState<string | null>(null)   // doc_type being uploaded
+  const [uploading, setUploading] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  // ── Load profile on mount ──────────────────────────────────────────────────
   useEffect(() => {
     api.getProfile().then((p) => {
       setProfile(p)
-      // Pre-fill form from loaded profile
       const initial: Record<string, string> = {}
-      for (const { key } of SCALAR_FIELDS) {
+      
+      const fields = [
+        "name", "email", "date_of_birth", "address", "gpa", "graduation_year",
+        "education", "education_degree", "skills", "test_scores", "personal_statement"
+      ]
+
+      for (const key of fields) {
         if (key === "education_degree") {
-          // Pull from education array
-          const eduField = p.fields["education"]
-          if (eduField && Array.isArray(eduField.value)) {
-            const first = (eduField.value as Record<string, unknown>[])[0]
+          const edu = p.fields["education"]
+          if (edu && Array.isArray(edu.value)) {
+            const first = (edu.value as Record<string, unknown>[])[0]
             initial[key] = first ? String(first["degree"] ?? "") : ""
           }
           continue
         }
+        if (key === "education") {
+          const edu = p.fields["education"]
+          if (edu && Array.isArray(edu.value)) {
+            const first = (edu.value as Record<string, unknown>[])[0]
+            initial[key] = first ? String(first["institution"] ?? "") : ""
+          }
+          continue
+        }
+        if (key === "test_scores") {
+          const raw = p.fields["test_scores"]?.value
+          if (raw && typeof raw === "object") {
+            initial[key] = String((raw as Record<string, unknown>)["SAT"] ?? "")
+          }
+          continue
+        }
+        if (key === "skills") {
+          const raw = p.fields["skills"]?.value
+          if (Array.isArray(raw)) initial[key] = raw.join(", ")
+          continue
+        }
+
         const field = p.fields[key]
-        if (field) initial[key] = profileValueToString(key, field.value)
+        if (field && field.value != null) {
+          initial[key] = String(field.value)
+        }
       }
       setForm(initial)
     }).catch(() => {
-      // No profile yet — start empty
       setProfile({ fields: {}, documents: {} })
     })
   }, [])
 
-  // ── Save scalar fields ─────────────────────────────────────────────────────
   async function handleSave() {
     setSaving(true)
     setError(null)
     setSaved(false)
     try {
-      const payload = buildSavePayload(form)
+      const payload: Record<string, unknown> = {}
+      if (form.name) payload["name"] = form.name.trim()
+      if (form.email) payload["email"] = form.email.trim()
+      if (form.date_of_birth) payload["date_of_birth"] = form.date_of_birth.trim()
+      if (form.address) payload["address"] = form.address.trim()
+      if (form.gpa) payload["gpa"] = Number(form.gpa) || form.gpa.trim()
+      if (form.graduation_year) payload["graduation_year"] = Number(form.graduation_year) || form.graduation_year.trim()
+      if (form.test_scores) payload["test_scores"] = { SAT: Number(form.test_scores) || form.test_scores.trim() }
+      if (form.education) {
+        payload["education"] = [{
+          institution: form.education.trim(),
+          degree: (form.education_degree || "").trim()
+        }]
+      }
+      if (form.skills) {
+        payload["skills"] = form.skills.split(",").map(s => s.trim()).filter(Boolean)
+      }
+      if (form.personal_statement) {
+        payload["personal_statement"] = form.personal_statement.trim()
+      }
+
       await api.saveProfile(payload)
-      // Reload to reflect saved state
       const fresh = await api.getProfile()
       setProfile(fresh)
       setSaved(true)
@@ -137,7 +121,6 @@ export function Profile() {
     }
   }
 
-  // ── Upload a document ──────────────────────────────────────────────────────
   async function handleUpload(docType: string, file: File) {
     setUploading(docType)
     setError(null)
@@ -152,7 +135,6 @@ export function Profile() {
     }
   }
 
-  // ── Remove a document ─────────────────────────────────────────────────────
   async function handleRemoveDoc(docType: string) {
     setError(null)
     try {
@@ -164,165 +146,332 @@ export function Profile() {
     }
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   if (!profile) {
     return (
-      <div className="max-w-2xl mx-auto p-8 text-center text-gray-500">
-        Loading your profile…
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-8 text-slate-500 gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+          <span>Loading verified profile…</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            UniPro uses this information to fill every application automatically.
+    <div className="min-h-screen bg-slate-50/70 font-sans text-slate-900 flex flex-col">
+      <Navbar />
+
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center justify-between">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Dashboard</span>
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Verified Student Record</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Profile Header */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-indigo-200 shrink-0">
+              <User className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">Student Profile &amp; Documents</h1>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
+                Store your verified academic history and credentials once. The UniPro agent uses this data to automatically fill applications without asking repetitive questions.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs sm:text-sm shadow-sm shadow-indigo-200 transition-all cursor-pointer self-start sm:self-auto"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving…</span>
+              </>
+            ) : saved ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Saved Successfully!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Save Profile Changes</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-rose-900">Error</p>
+              <p className="text-xs">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 1: Personal & Contact Information */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <User className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Personal &amp; Contact Details
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Full Legal Name</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.name ?? ""}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Alex Johnson"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Primary Email Address</label>
+              <input
+                type="email"
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.email ?? ""}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="e.g. alex.johnson@example.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Date of Birth</label>
+              <input
+                type="date"
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.date_of_birth ?? ""}
+                onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Mailing Address</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.address ?? ""}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                placeholder="Street address, City, Country"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 2: Academic Record & Standardized Testing */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <GraduationCap className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Academic Record &amp; Standardized Testing
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Current / Previous Institution</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.education ?? ""}
+                onChange={(e) => setForm({ ...form, education: e.target.value })}
+                placeholder="e.g. Example Institute of Technology"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Degree Program</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.education_degree ?? ""}
+                onChange={(e) => setForm({ ...form, education_degree: e.target.value })}
+                placeholder="e.g. B.Tech Computer Science"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Cumulative GPA</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.gpa ?? ""}
+                onChange={(e) => setForm({ ...form, gpa: e.target.value })}
+                placeholder="e.g. 8.7 or 3.9"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Graduation Year</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.graduation_year ?? ""}
+                onChange={(e) => setForm({ ...form, graduation_year: e.target.value })}
+                placeholder="e.g. 2027"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">SAT Score</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.test_scores ?? ""}
+                onChange={(e) => setForm({ ...form, test_scores: e.target.value })}
+                placeholder="e.g. 1480"
+              />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Academic Skills &amp; Extracurriculars (comma-separated)</label>
+              <input
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                value={form.skills ?? ""}
+                onChange={(e) => setForm({ ...form, skills: e.target.value })}
+                placeholder="e.g. Python, Machine Learning, JavaScript, Robotics"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 3: Personal Statement */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <BookOpen className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Personal Statement / Statement of Purpose
+            </h2>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Your Personal Statement</label>
+            <textarea
+              rows={4}
+              className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none transition-colors"
+              value={form.personal_statement ?? ""}
+              onChange={(e) => setForm({ ...form, personal_statement: e.target.value })}
+              placeholder="Write your personal statement or statement of purpose here. When saved, the agent will automatically use it across university applications."
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Characters: {(form.personal_statement ?? "").length} | Stored as verified student statement
+            </p>
+          </div>
+        </section>
+
+        {/* SECTION 4: S3 Synced Documents */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-indigo-600" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Uploaded Application Documents (Amazon S3)
+              </h2>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+              <CloudCheck className="w-3.5 h-3.5" />
+              <span>S3 Vault Synced</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Upload your documents once. The autonomous agent will automatically match and attach them when university portals require transcripts or resumes.
           </p>
-        </div>
-        <Link to="/" className="text-sm text-blue-600 hover:underline">
-          ← Dashboard
-        </Link>
-      </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
+          <div className="grid grid-cols-1 gap-3">
+            {DOC_TYPES.map(({ key, label, description, accept }) => {
+              const existing = profile.documents[key]
+              const isUploading = uploading === key
 
-      {/* ── Personal Information ────────────────────────────────────────── */}
-      <section className="border border-gray-200 rounded-xl p-5 space-y-4 bg-white">
-        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-          Personal &amp; Academic Information
-        </h2>
+              return (
+                <div
+                  key={key}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 gap-3 transition-colors"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span className="text-sm font-bold text-slate-900">{label}</span>
+                    </div>
+                    <p className="text-xs text-slate-500">{description}</p>
+                    {existing ? (
+                      <div className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-700 font-semibold bg-white px-2.5 py-0.5 rounded border border-emerald-200 mt-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span className="truncate">{existing.split("/").pop()}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No file uploaded</span>
+                    )}
+                  </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {SCALAR_FIELDS.map(({ label, key, placeholder, type }) => {
-            const stored = key === "education_degree"
-              ? profile.fields["education"]
-              : profile.fields[key]
-            const isVerified = stored?.verified === true
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <input
+                      ref={(el) => { fileRefs.current[key] = el }}
+                      type="file"
+                      accept={accept}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleUpload(key, file)
+                        e.target.value = ""
+                      }}
+                    />
 
-            return (
-              <div key={key} className={key === "personal_statement" ? "sm:col-span-2" : ""}>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  {label}
-                  {isVerified && (
-                    <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold uppercase">
-                      ✓ saved
-                    </span>
-                  )}
-                </label>
-
-                {key === "personal_statement" ? (
-                  <textarea
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
-                    rows={4}
-                    placeholder={placeholder}
-                    value={form[key] ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  />
-                ) : (
-                  <input
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    type={type ?? "text"}
-                    placeholder={placeholder}
-                    value={form[key] ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm transition-colors"
-        >
-          {saving ? "Saving…" : saved ? "✓ Saved!" : "Save Profile"}
-        </button>
-      </section>
-
-      {/* ── Documents ──────────────────────────────────────────────────── */}
-      <section className="border border-gray-200 rounded-xl p-5 space-y-4 bg-white">
-        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-          Documents
-        </h2>
-        <p className="text-xs text-gray-500">
-          Upload once — the agent will attach these files to every application that needs them.
-        </p>
-
-        <div className="space-y-3">
-          {DOC_TYPES.map(({ key, label, accept }) => {
-            const existing = profile.documents[key]
-            const isUploading = uploading === key
-
-            return (
-              <div
-                key={key}
-                className="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3 bg-gray-50/60"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800">{label}</p>
-                  {existing ? (
-                    <p className="text-[11px] text-emerald-600 font-mono truncate mt-0.5">
-                      ✓ {existing.split("/").pop()}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-gray-400 italic mt-0.5">Not uploaded</p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0 ml-3">
-                  {/* Hidden file input */}
-                  <input
-                    ref={(el) => { fileRefs.current[key] = el }}
-                    type="file"
-                    accept={accept}
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleUpload(key, file)
-                      e.target.value = ""   // reset so same file can re-upload
-                    }}
-                  />
-
-                  <button
-                    onClick={() => fileRefs.current[key]?.click()}
-                    disabled={isUploading}
-                    className="px-3 py-1.5 text-xs font-medium bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-700 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {isUploading ? "Uploading…" : existing ? "Replace" : "Upload"}
-                  </button>
-
-                  {existing && (
                     <button
-                      onClick={() => handleRemoveDoc(key)}
-                      className="px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
-                      title="Remove document"
+                      type="button"
+                      onClick={() => fileRefs.current[key]?.click()}
+                      disabled={isUploading}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
                     >
-                      ✕
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                          <span>Uploading…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3 h-3 text-slate-500" />
+                          <span>{existing ? "Replace File" : "Upload File"}</span>
+                        </>
+                      )}
                     </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
 
-      {/* ── Profile completeness tip ────────────────────────────────────── */}
-      <div className="text-xs text-gray-400 text-center pb-2">
-        All saved information is stored locally and used automatically when the agent fills applications.
-        You can update any field at any time and it will apply to future runs.
-      </div>
+                    {existing && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDoc(key)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg border border-slate-200 hover:border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Remove file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      </main>
     </div>
   )
 }
-

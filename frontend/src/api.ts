@@ -31,6 +31,12 @@ export type StudentProfile = {
     documents: Record<string, string>   // doc_type -> relative path
 }
 
+export type ProfileSummary = {
+    id: string
+    name: string
+    active: boolean
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${BASE}${path}`, {
         headers: { 'Content-Type': 'application/json' },
@@ -83,4 +89,19 @@ export const api = {
     },
     deleteDocument: (docType: string) =>
         request<{ status: string; doc_type: string }>(`/profile/documents/${docType}`, { method: 'DELETE' }),
+
+    // Multi-profile
+    listProfiles: () => request<{ profiles: ProfileSummary[]; active: string | null }>('/profiles'),
+    createProfile: (name: string, profile_id?: string) =>
+        request<{ status: string; profile_id: string; name: string }>('/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ name, profile_id }),
+        }),
+    activateProfile: (profileId: string) =>
+        request<{ status: string; profile_id: string }>(`/profiles/${profileId}/activate`, { method: 'POST' }),
+    deleteProfile: (profileId: string) =>
+        request<{ status: string; profile_id: string }>(`/profiles/${profileId}`, { method: 'DELETE' }),
+
+    // Server health
+    serverStatus: () => request<{ api: boolean; demo_portal: boolean; frontend: boolean }>('/server/status'),
 }

@@ -10,6 +10,10 @@ from app.tools.profile import (
     student_confirm_field,
     is_field,
     field_state,
+    list_profiles,
+    create_profile,
+    get_active_profile_id,
+    set_active_profile_id,
 )
 
 app = FastAPI(title="UniPro")
@@ -43,6 +47,10 @@ class ProfileFieldRequest(BaseModel):
 class ProfileBulkRequest(BaseModel):
     """Set / replace multiple scalar fields at once (all confirmed verified)."""
     fields: dict[str, Any]   # {"name": "Alice", "gpa": 3.9, ...}
+
+class ProfileCreateRequest(BaseModel):
+    name: str
+    profile_id: str | None = None
 
 def _check_busy(res: Any) -> Any:
     if isinstance(res, dict) and res.get("status") == "busy":
@@ -87,6 +95,72 @@ def retry(application_id: str):
 @app.post("/applications/{application_id}/continue")
 def continue_run(application_id: str):
     return _check_busy(runner.nudge(application_id))
+
+
+# ── Server health ─────────────────────────────────────────────────────────────
+
+@app.get("/server/status")
+def server_status():
+    """Health check — returns which services are reachable."""
+    import socket
+
+    def port_open(port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+
+    return {
+        "api": True,           # We are running if this responds
+        "demo_portal": port_open(8080),
+        "frontend": port_open(5173),
+    }
+
+
+# ── Multi-profile management ──────────────────────────────────────────────────
+
+@app.get("/profiles")
+def get_profiles():
+    """List all student profiles with their active flag."""
+    return {"profiles": list_profiles(), "active": get_active_profile_id()}
+
+
+@app.post("/profiles")
+def new_profile(req: ProfileCreateRequest):
+    """Create a new blank student profile and make it active."""
+    import uuid
+    profile_id = req.profile_id or str(uuid.uuid4())[:8]
+    try:
+        create_profile(profile_id, req.name)
+        set_active_profile_id(profile_id)
+        return {"status": "created", "profile_id": profile_id, "name": req.name}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/profiles/{profile_id}/activate")
+def activate_profile(profile_id: str):
+    """Switch the active profile."""
+    from app.tools.profile import _PROFILES_DIR, _DEFAULT_PATH
+    path = _PROFILES_DIR / f"{profile_id}.json"
+    if not path.exists() and profile_id != "default" and not _DEFAULT_PATH.exists():
+        raise HTTPException(404, f"Profile '{profile_id}' not found")
+    set_active_profile_id(profile_id)
+    return {"status": "activated", "profile_id": profile_id}
+
+
+@app.delete("/profiles/{profile_id}")
+def delete_profile_route(profile_id: str):
+    """Delete a profile (cannot delete the active one)."""
+    from app.tools.profile import _PROFILES_DIR
+    if profile_id == get_active_profile_id():
+        raise HTTPException(400, "Cannot delete the active profile. Switch to another profile first.")
+    path = _PROFILES_DIR / f"{profile_id}.json"
+    if not path.exists():
+        raise HTTPException(404, f"Profile '{profile_id}' not found")
+    path.unlink()
+    return {"status": "deleted", "profile_id": profile_id}
 
 
 # ── Profile endpoints ─────────────────────────────────────────────────────────

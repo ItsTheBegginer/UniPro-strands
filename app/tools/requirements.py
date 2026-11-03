@@ -24,35 +24,46 @@ def _portal_url() -> str:
 
 def _requirements_db() -> dict[tuple[str, str], dict[str, Any]]:
     base = _portal_url()
-    return {
-        ("demo university", "computer science"): {
+
+    # Shared form structure — all Demo University programs use the same portal pages.
+    # Only the program name and deadline differ.
+    _common_fields = [
+        {"page": "personal-info", "label": "Full name", "type": "text"},
+        {"page": "personal-info", "label": "Email address", "type": "email"},
+        {"page": "personal-info", "label": "Date of birth", "type": "date"},
+        {"page": "personal-info", "label": "Mailing address", "type": "text"},
+        {"page": "education", "label": "Institution", "type": "text"},
+        {"page": "education", "label": "Degree", "type": "text"},
+        {"page": "education", "label": "Graduation year", "type": "number"},
+        {"page": "education", "label": "Undergraduate GPA", "type": "number"},
+        {"page": "education", "label": "SAT score", "type": "number"},
+        {"page": "documents", "label": "Resume", "type": "file"},
+        {"page": "documents", "label": "Transcript", "type": "file"},
+    ]
+    _common_questions = [
+        {"page": "questions", "text": "Personal statement", "risk": "medium"},
+        {"page": "questions", "text": "Have you ever been subject to disciplinary action?", "risk": "high"},
+    ]
+    _common_required_fields = [
+        "name", "email", "date_of_birth", "address", "education",
+        "graduation_year", "gpa", "test_scores",
+    ]
+    _common_required_docs = ["resume", "transcript", "personal_statement"]
+
+    def _entry(program: str, deadline: str) -> dict[str, Any]:
+        return {
             "university": "Demo University",
-            "program": "Computer Science",
-            "deadline": "2026-12-01",
+            "program": program,
+            "deadline": deadline,
             "application_url": f"{base}/login.html",
-            "required_documents": ["resume", "transcript", "personal_statement"],
-            "required_fields": [
-                "name", "email", "date_of_birth", "address", "education",
-                "graduation_year", "gpa", "test_scores",
-            ],
-            "application_fields": [
-                {"page": "personal-info", "label": "Full name", "type": "text"},
-                {"page": "personal-info", "label": "Email address", "type": "email"},
-                {"page": "personal-info", "label": "Date of birth", "type": "date"},
-                {"page": "personal-info", "label": "Mailing address", "type": "text"},
-                {"page": "education", "label": "Institution", "type": "text"},
-                {"page": "education", "label": "Degree", "type": "text"},
-                {"page": "education", "label": "Graduation year", "type": "number"},
-                {"page": "education", "label": "Undergraduate GPA", "type": "number"},
-                {"page": "education", "label": "SAT score", "type": "number"},
-                {"page": "documents", "label": "Resume", "type": "file"},
-                {"page": "documents", "label": "Transcript", "type": "file"},
-            ],
-            "questions": [
-                {"page": "questions", "text": "Personal statement", "risk": "medium"},
-                {"page": "questions", "text": "Have you ever been subject to disciplinary action?", "risk": "high"},
-            ],
+            "required_documents": _common_required_docs,
+            "required_fields": _common_required_fields,
+            "application_fields": _common_fields,
+            "questions": _common_questions,
         }
+
+    return {
+        ("demo university", "computer science"): _entry("Computer Science", "2026-12-01"),
     }
 
 

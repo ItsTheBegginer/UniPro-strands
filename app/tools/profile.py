@@ -27,8 +27,88 @@ _DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "student_profi
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+_PROFILES_DIR = Path(__file__).resolve().parent.parent / "data" / "profiles"
+_ACTIVE_PROFILE_FILE = Path(__file__).resolve().parent.parent / "data" / "active_profile"
+
+
+def get_active_profile_id() -> str | None:
+    """Return the active profile id, or None if not set."""
+    if _ACTIVE_PROFILE_FILE.exists():
+        pid = _ACTIVE_PROFILE_FILE.read_text().strip()
+        if pid:
+            return pid
+    return None
+
+
+def set_active_profile_id(profile_id: str) -> None:
+    """Persist the active profile id."""
+    _ACTIVE_PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _ACTIVE_PROFILE_FILE.write_text(profile_id)
+
+
+def list_profiles() -> list[dict]:
+    """Return a list of all profiles with id, name, and active flag."""
+    active_id = get_active_profile_id()
+    profiles = []
+    if _PROFILES_DIR.exists():
+        for f in sorted(_PROFILES_DIR.glob("*.json")):
+            try:
+                p = json.loads(f.read_text())
+                pid = f.stem
+                name_entry = p.get("name", {})
+                name = name_entry.get("value", pid) if isinstance(name_entry, dict) else pid
+                profiles.append({"id": pid, "name": name, "active": pid == active_id})
+            except Exception:
+                pass
+    # Also list legacy profile if no profiles dir profiles exist
+    if not profiles and _DEFAULT_PATH.exists():
+        try:
+            p = json.loads(_DEFAULT_PATH.read_text())
+            name_entry = p.get("name", {})
+            name = name_entry.get("value", "Demo Student") if isinstance(name_entry, dict) else "Demo Student"
+            profiles.append({"id": "default", "name": name, "active": active_id is None})
+        except Exception:
+            pass
+    return profiles
+
+
+def create_profile(profile_id: str, name: str) -> dict[str, Any]:
+    """Create a new blank profile and return it."""
+    _PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    path = _PROFILES_DIR / f"{profile_id}.json"
+    if path.exists():
+        raise ValueError(f"Profile '{profile_id}' already exists.")
+    profile: dict[str, Any] = {
+        "student_id": profile_id,
+        "name": {"value": name, "verified": True},
+        "email": {"value": "", "verified": False},
+        "date_of_birth": {"value": "", "verified": False},
+        "address": {"value": "", "verified": False},
+        "education": {"value": [], "verified": False},
+        "graduation_year": {"value": None, "verified": False},
+        "gpa": {"value": None, "verified": False},
+        "skills": {"value": [], "verified": False},
+        "test_scores": {"value": {}, "verified": False},
+        "experience": {"value": None, "verified": False},
+        "personal_statement": {"value": "", "verified": False},
+        "documents": {"value": {}, "verified": False},
+    }
+    path.write_text(json.dumps(profile, indent=2))
+    return profile
+
+
 def _profile_path() -> Path:
-    return Path(os.getenv("UNIPRO_PROFILE_PATH", str(_DEFAULT_PATH)))
+    """Return path to the currently-active profile JSON file."""
+    env_override = os.getenv("UNIPRO_PROFILE_PATH")
+    if env_override:
+        return Path(env_override)
+    active_id = get_active_profile_id()
+    if active_id:
+        p = _PROFILES_DIR / f"{active_id}.json"
+        if p.exists():
+            return p
+    # Legacy fallback
+    return _DEFAULT_PATH
 
 
 def load_profile() -> dict[str, Any]:
