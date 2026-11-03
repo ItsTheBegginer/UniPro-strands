@@ -24,7 +24,26 @@ WORKFLOW for "prepare/start my application to <university> <program>":
 5. After request_student_input returns status "paused": END YOUR TURN at once.
    You will be resumed with the student's answer. When resumed, if the same field
    comes up, request_student_input returns the stored answer — use it with
-   fill_field / select_option (the exact answer text, same field_label).
+   select_option(selector, answer, field_label) for radio/select fields,
+   or fill_field for text fields.
+
+RADIO / SELECT FIELDS — CRITICAL RULES:
+- inspect_page() reports each field's `type`. When type is "radio_group" or
+  "select", you KNOW the exact choices from the `options` list it returns.
+- For HIGH-risk radio fields (e.g. "Have you ever been subject to disciplinary
+  action?") you MUST ask the student AND pass the field metadata so the UI
+  renders the correct control:
+    request_student_input(
+        question="<exact label as shown on form>",
+        field_label="<same label>",
+        reason="This is a high-risk declaration that only the student can answer.",
+        field_type="radio",
+        options=["Yes", "No"],    # exact option labels from inspect_page
+    )
+- NEVER request free text when inspect_page shows a radio or select field.
+- After receiving the student's answer, call select_option(selector, answer,
+  field_label) — NOT fill_field — to choose the correct radio button.
+
 6. Call detect_captcha and detect_otp on the login page and before moving on
    from any page that looks like a challenge. If either fires, stop.
 7. When every page is complete, call request_final_approval. If it lists

@@ -5,11 +5,30 @@ export type ApplicationStatus = {
     university: string
     program: string
     state: string
-    pending: { field_label: string; question: string; reason: string; proposed_answer: string; risk: string } | null
+    pending: {
+        field_label: string
+        question: string
+        reason: string
+        proposed_answer: string
+        risk: string
+        field_type?: string      // "text" | "radio" | "select" | "checkbox"
+        options?: string[]       // selectable choices for radio/select fields
+    } | null
     filled: string[]
     uploaded: string[]
     failure: string | null
     agent_message?: string
+}
+
+export type ProfileField = {
+    value: unknown
+    verified: boolean
+    state: 'verified' | 'unverified' | 'missing'
+}
+
+export type StudentProfile = {
+    fields: Record<string, ProfileField>
+    documents: Record<string, string>   // doc_type -> relative path
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -43,4 +62,25 @@ export const api = {
         }),
     retry: (id: string) => request<ApplicationStatus>(`/applications/${id}/retry`, { method: 'POST' }),
     continueRun: (id: string) => request<ApplicationStatus>(`/applications/${id}/continue`, { method: 'POST' }),
+
+    // Profile
+    getProfile: () => request<StudentProfile>('/profile'),
+    saveProfile: (fields: Record<string, unknown>) =>
+        request<{ status: string; updated: string[] }>('/profile', {
+            method: 'PUT',
+            body: JSON.stringify({ fields }),
+        }),
+    uploadDocument: (docType: string, file: File) => {
+        const form = new FormData()
+        form.append('file', file)
+        return fetch(`${BASE}/profile/documents/${docType}`, {
+            method: 'POST',
+            body: form,
+        }).then(async (res) => {
+            if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+            return res.json() as Promise<{ status: string; doc_type: string; path: string }>
+        })
+    },
+    deleteDocument: (docType: string) =>
+        request<{ status: string; doc_type: string }>(`/profile/documents/${docType}`, { method: 'DELETE' }),
 }

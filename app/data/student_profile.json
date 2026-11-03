@@ -2,19 +2,23 @@
   "student_id": "demo-student",
   "name": {
     "value": "Alex Johnson",
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "email": {
     "value": "alex.johnson.demo@example.com",
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "date_of_birth": {
     "value": "2004-03-14",
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "address": {
     "value": "221B Example Street, Mumbai, India",
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "education": {
     "value": [
@@ -23,15 +27,18 @@
         "degree": "B.Tech Computer Science"
       }
     ],
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "graduation_year": {
-    "value": 2027,
-    "verified": true
+    "value": "2027",
+    "verified": true,
+    "source": "student"
   },
   "gpa": {
     "value": 8.7,
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "skills": {
     "value": [
@@ -39,28 +46,32 @@
       "Machine Learning",
       "JavaScript"
     ],
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "test_scores": {
     "value": {
       "SAT": 1480
     },
-    "verified": true
+    "verified": true,
+    "source": "student"
   },
   "experience": {
     "value": null,
     "verified": false
   },
   "personal_statement": {
-    "value": "yes",
+    "value": "Very good",
     "verified": true,
     "source": "student"
   },
   "documents": {
     "value": {
       "resume": "app/data/documents/resume.pdf",
-      "transcript": "app/data/documents/transcript.pdf"
+      "transcript": "app/data/documents/transcript.pdf",
+      "cover_letter": "app/data/documents/cover_letter.pdf"
     },
-    "verified": true
+    "verified": true,
+    "source": "student"
   }
 }

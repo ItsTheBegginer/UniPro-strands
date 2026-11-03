@@ -49,7 +49,12 @@ def unresolved_items(session: ApplicationSession) -> list[str]:
 
 @tool
 def request_student_input(
-    question: str, field_label: str, reason: str, proposed_answer: str = ""
+    question: str,
+    field_label: str,
+    reason: str,
+    proposed_answer: str = "",
+    field_type: str = "text",
+    options: list[str] | None = None,
 ) -> dict[str, Any]:
     """Pause the run and ask the student for an answer or a decision.
 
@@ -65,10 +70,16 @@ def request_student_input(
         reason: Why the student is being asked (one sentence).
         proposed_answer: A suggested answer for MEDIUM-risk items only. Ignored
             (and dropped) for HIGH-risk items such as disciplinary or legal questions.
+        field_type: Input type as it appears in the form — "text", "radio",
+            "select", or "checkbox". Defaults to "text". Pass "radio" for
+            Yes/No or other radio-button groups.
+        options: List of selectable option labels for radio/select fields
+            (e.g. ["Yes", "No"]). Omit for plain text fields.
     """
     s = state.active_session()
     risk = classify_field(field_label, question)
     proposal = "" if risk == RiskLevel.HIGH else (proposed_answer or "")
+    safe_options: list[str] = options if options is not None else []
 
     if s is not None and field_label in s.answers:
         return {"status": "answered", "field_label": field_label, "answer": s.answers[field_label]}
@@ -80,6 +91,8 @@ def request_student_input(
         s.pending = {
             "field_label": field_label, "question": question, "reason": reason,
             "proposed_answer": proposal, "risk": risk.value,
+            "field_type": field_type,
+            "options": safe_options,
         }
         state.save_active()
         state.record("question_encountered", field=field_label, risk=risk.value)

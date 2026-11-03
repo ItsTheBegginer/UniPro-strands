@@ -23,6 +23,23 @@ from app.tools.browser import get_browser
 from app.tools.mapping import match_source
 from app.tools.profile import student_confirm_field
 
+import functools
+import threading
+
+_RUN_LOCK = threading.Lock()
+
+def _serialized(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not _RUN_LOCK.acquire(blocking=False):
+            return {"status": "busy", "error": "Another UniPro operation is already running. Please wait and try again."}
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _RUN_LOCK.release()
+    return wrapper
+
+
 MAX_ANSWER_LEN = 5000
 
 
@@ -112,7 +129,14 @@ def _run_agent(application_id: str, prompt: str) -> dict[str, Any]:
         message = str(build_agent()(prompt))
     except Exception as exc:  # noqa: BLE001 - recovery boundary
         s = state.active_session()
-        s.failure = f"{type(exc).__name__}: {exc}"
+        err_str = f"{type(exc).__name__}: {exc}"
+        if "Operation not allowed" in err_str:
+            err_str = (
+                "AWS Bedrock Model Access Required: Model invocation returned 'Operation not allowed'. "
+                "Enable Amazon Nova in AWS Bedrock Console (us-east-1 > Model access > Enable Amazon Nova). "
+                f"Details: {err_str}"
+            )
+        s.failure = err_str
         state.save_active()
         state.record("run_failed", error=s.failure)
         if s.sm.can_transition(S.FAILED):
@@ -123,6 +147,7 @@ def _run_agent(application_id: str, prompt: str) -> dict[str, Any]:
     return {**out, "agent_message": message}
 
 
+@_serialized
 def start_application(university: str, program: str, application_id: str | None = None,
                       request: str | None = None) -> dict[str, Any]:
     application_id = application_id or _new_id()
@@ -134,6 +159,7 @@ def start_application(university: str, program: str, application_id: str | None 
     return _run_agent(application_id, request or f"Prepare my application for {university} {program}.")
 
 
+@_serialized
 def provide_answer(application_id: str, answer: str) -> dict[str, Any]:
     """Student answers the pending question (or confirms a CAPTCHA/OTP was handled)."""
     s = state.activate(application_id)
@@ -168,6 +194,7 @@ def provide_answer(application_id: str, answer: str) -> dict[str, Any]:
     return _run_agent(application_id, prompt)
 
 
+@_serialized
 def approve_and_submit(application_id: str) -> dict[str, Any]:
     """STUDENT-TRIGGERED final submission. Not reachable by the agent."""
     s = state.activate(application_id)
@@ -198,6 +225,7 @@ def approve_and_submit(application_id: str) -> dict[str, Any]:
         state.deactivate()
 
 
+@_serialized
 def request_changes(application_id: str, note: str) -> dict[str, Any]:
     s = state.activate(application_id)
     try:
@@ -211,6 +239,7 @@ def request_changes(application_id: str, note: str) -> dict[str, Any]:
     return _run_agent(application_id, prompt)
 
 
+@_serialized
 def retry(application_id: str) -> dict[str, Any]:
     """Recover a FAILED application (Phase 19): back to RUNNING, or restart preparation."""
     s = state.activate(application_id)
@@ -227,6 +256,7 @@ def retry(application_id: str) -> dict[str, Any]:
         state.deactivate()
     return _run_agent(application_id, prompt)
 
+@_serialized
 def nudge(application_id: str) -> dict[str, Any]:
     s = state.activate(application_id)
     try:

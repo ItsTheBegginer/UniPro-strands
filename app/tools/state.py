@@ -71,7 +71,7 @@ class ApplicationSession:
         return cls(sm=sm, **data)
 
 
-class SessionStore:
+class FileSessionStore:
     def __init__(self, base_dir: Path | None = None):
         self.base_dir = Path(base_dir or os.getenv("UNIPRO_RUNS_DIR", _DEFAULT_DIR))
 
@@ -87,14 +87,119 @@ class SessionStore:
         return sorted(p.stem for p in self.base_dir.glob("*.json"))
 
     def load(self, application_id: str) -> ApplicationSession:
-        return ApplicationSession.from_dict(json.loads(self._path(application_id).read_text()))
+        path = self._path(application_id)
+        if not path.exists():
+            raise FileNotFoundError(f"Application session {application_id} not found at {path}")
+        return ApplicationSession.from_dict(json.loads(path.read_text()))
 
     def save(self, session: ApplicationSession) -> None:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._path(session.application_id).write_text(json.dumps(session.to_dict(), indent=2, default=str))
 
-def store() -> SessionStore:
-    return SessionStore()
+
+# Backward compatibility alias
+SessionStore = FileSessionStore
+
+
+class DynamoDBSessionStore:
+    """DynamoDB-backed session store (Phase 16).
+    
+    Stores session metadata in unipro-applications and audit events in unipro-activity.
+    Falls back safely to local FileSessionStore if DynamoDB is unreachable or access is denied.
+    """
+    def __init__(self, table_name: str = "unipro-applications", activity_table: str = "unipro-activity"):
+        self.table_name = os.getenv("DYNAMODB_TABLE_APPLICATIONS", table_name)
+        self.activity_table = os.getenv("DYNAMODB_TABLE_ACTIVITY", activity_table)
+        self.region = os.getenv("AWS_REGION", "us-east-1")
+        self._fallback = FileSessionStore()
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import boto3
+            self._client = boto3.client("dynamodb", region_name=self.region)
+        return self._client
+
+    def exists(self, application_id: str) -> bool:
+        try:
+            client = self._get_client()
+            resp = client.get_item(
+                TableName=self.table_name,
+                Key={"application_id": {"S": application_id}},
+                ProjectionExpression="application_id"
+            )
+            if "Item" in resp:
+                return True
+        except Exception:
+            pass
+        return self._fallback.exists(application_id)
+
+    def list_ids(self) -> list[str]:
+        dynamo_ids = []
+        try:
+            client = self._get_client()
+            resp = client.scan(
+                TableName=self.table_name,
+                ProjectionExpression="application_id"
+            )
+            dynamo_ids = [it["application_id"]["S"] for it in resp.get("Items", []) if "application_id" in it]
+        except Exception:
+            pass
+        local_ids = self._fallback.list_ids()
+        return sorted(set(dynamo_ids + local_ids))
+
+    def load(self, application_id: str) -> ApplicationSession:
+        try:
+            client = self._get_client()
+            resp = client.get_item(
+                TableName=self.table_name,
+                Key={"application_id": {"S": application_id}}
+            )
+            if "Item" in resp and "session_json" in resp["Item"]:
+                data = json.loads(resp["Item"]["session_json"]["S"])
+                return ApplicationSession.from_dict(data)
+        except Exception:
+            pass
+        return self._fallback.load(application_id)
+
+    def save(self, session: ApplicationSession) -> None:
+        # Always persist locally first to guarantee state durability
+        self._fallback.save(session)
+        try:
+            client = self._get_client()
+            session_dict = session.to_dict()
+            client.put_item(
+                TableName=self.table_name,
+                Item={
+                    "application_id": {"S": session.application_id},
+                    "university": {"S": session.university},
+                    "program": {"S": session.program},
+                    "state": {"S": session.state.value},
+                    "session_json": {"S": json.dumps(session_dict, default=str)},
+                    "updated_at": {"S": _now()}
+                }
+            )
+            if session.audit:
+                latest = session.audit[-1]
+                client.put_item(
+                    TableName=self.activity_table,
+                    Item={
+                        "application_id": {"S": session.application_id},
+                        "timestamp": {"S": latest.get("timestamp", _now())},
+                        "event": {"S": latest.get("event", "unknown")},
+                        "detail": {"S": json.dumps(latest.get("detail", {}), default=str)}
+                    }
+                )
+        except Exception:
+            # DynamoDB write failed; local backup is already saved
+            pass
+
+
+def store():
+    backend = os.getenv("STORAGE_BACKEND", "file").strip().lower()
+    if backend == "dynamodb":
+        return DynamoDBSessionStore()
+    return FileSessionStore()
 
 
 # ------------------------------------------------ active application context

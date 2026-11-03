@@ -2,33 +2,52 @@
 Model provider layer (Phase 2).
 
 UniPro / Strands never import a concrete model directly; they call
-`get_model()`, which reads MODEL_PROVIDER from the environment. Gemini is the
-default because Bedrock model invocation is currently blocked on this AWS
-account; Bedrock remains a one-line switch (MODEL_PROVIDER=bedrock) for later.
+`get_model()`, which reads MODEL_PROVIDER from the environment.
 
-    MODEL_PROVIDER=gemini | bedrock
-    GEMINI_API_KEY, GEMINI_MODEL_ID      (default gemini-2.5-flash)
-    BEDROCK_MODEL_ID, AWS_REGION
+    MODEL_PROVIDER=bedrock | gemini
+    BEDROCK_MODEL_ID (default us.amazon.nova-lite-v1:0)
+    AWS_REGION (default us-east-1)
+    GEMINI_API_KEY, GEMINI_MODEL_ID (default gemini-3.6-flash)
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
+logger = logging.getLogger("unipro.model_provider")
 
 
 def get_model():
     """Return a Strands-compatible model instance for the configured provider."""
-    provider = os.getenv("MODEL_PROVIDER", "gemini").strip().lower()
+    provider = os.getenv("MODEL_PROVIDER", "bedrock").strip().lower()
+
+    if provider == "bedrock":
+        from strands.models import BedrockModel
+        import botocore.config
+
+        model_id = os.getenv("BEDROCK_MODEL_ID", "eu.amazon.nova-lite-v1:0").strip()
+        region_name = os.getenv("BEDROCK_REGION", "eu-north-1").strip()
+        boto_config = botocore.config.Config(
+            retries={"max_attempts": 5, "mode": "adaptive"}
+        )
+        return BedrockModel(
+            model_id=model_id,
+            region_name=region_name,
+            temperature=float(os.getenv("BEDROCK_TEMPERATURE", "0.1")),
+            max_tokens=int(os.getenv("BEDROCK_MAX_TOKENS", "4096")),
+            boto_client_config=boto_config,
+        )
 
     if provider == "gemini":
         try:
             from strands.models.gemini import GeminiModel
-        except ImportError as exc:  # the gemini extra pulls in google-genai
+        except ImportError as exc:
             raise RuntimeError(
-                "Gemini support is not installed. Run: pip install 'strands-agents[gemini]'"
+                "Gemini support is not installed. Run: pip install strands-agents[gemini]"
             ) from exc
 
         api_key = os.getenv("GEMINI_API_KEY")
@@ -48,17 +67,7 @@ def get_model():
         return GeminiModel(
             client_args={"api_key": api_key, "http_options": http_options},
             model_id=os.getenv("GEMINI_MODEL_ID", "gemini-3.6-flash"),
-            # Thinking tokens count against the output limit; keep headroom
-            # so tool-call turns are never truncated.
             params={"temperature": 0.2, "max_output_tokens": 8192},
         )
 
-    if provider == "bedrock":
-        from strands.models import BedrockModel
-
-        model_id = os.getenv("BEDROCK_MODEL_ID")
-        if not model_id:
-            raise RuntimeError("BEDROCK_MODEL_ID is not set (e.g. us.amazon.nova-2-lite-v1:0).")
-        return BedrockModel(model_id=model_id, region_name=os.getenv("AWS_REGION", "us-east-1"))
-
-    raise ValueError(f"Unknown MODEL_PROVIDER '{provider}'. Use 'gemini' or 'bedrock'.")
+    raise ValueError(f"Unknown MODEL_PROVIDER \"{provider}\". Use 'bedrock' or 'gemini'.")

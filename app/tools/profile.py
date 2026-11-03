@@ -32,6 +32,18 @@ def _profile_path() -> Path:
 
 
 def load_profile() -> dict[str, Any]:
+    backend = os.getenv("STORAGE_BACKEND", "file").strip().lower()
+    if backend == "dynamodb":
+        try:
+            import boto3
+            client = boto3.client("dynamodb", region_name=os.getenv("AWS_REGION", "us-east-1"))
+            table = os.getenv("DYNAMODB_TABLE_PROFILES", "unipro-profiles")
+            profile_id = os.getenv("STUDENT_PROFILE_ID", "default")
+            resp = client.get_item(TableName=table, Key={"profile_id": {"S": profile_id}})
+            if "Item" in resp and "profile_json" in resp["Item"]:
+                return json.loads(resp["Item"]["profile_json"]["S"])
+        except Exception:
+            pass
     path = _profile_path()
     if not path.exists():
         raise FileNotFoundError(f"No student profile at {path}. Run scripts/seed_demo_profile.py.")
@@ -42,6 +54,22 @@ def save_profile(profile: dict[str, Any]) -> None:
     path = _profile_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(profile, indent=2))
+    backend = os.getenv("STORAGE_BACKEND", "file").strip().lower()
+    if backend == "dynamodb":
+        try:
+            import boto3
+            client = boto3.client("dynamodb", region_name=os.getenv("AWS_REGION", "us-east-1"))
+            table = os.getenv("DYNAMODB_TABLE_PROFILES", "unipro-profiles")
+            profile_id = os.getenv("STUDENT_PROFILE_ID", "default")
+            client.put_item(
+                TableName=table,
+                Item={
+                    "profile_id": {"S": profile_id},
+                    "profile_json": {"S": json.dumps(profile, indent=2)}
+                }
+            )
+        except Exception:
+            pass
 
 
 def is_field(entry: Any) -> bool:
@@ -96,8 +124,35 @@ def resolve_source(profile: dict[str, Any], source: str) -> tuple[Any, str]:
     return value, state
 
 
+def upload_document_to_s3(doc_type: str, local_path: str) -> str | None:
+    """Upload a verified document to Amazon S3 (Phase 16).
+
+    The file is stored under a per‑student prefix so each user has an isolated
+    folder.  The prefix is ``students/<student_id>/documents/<doc_type>/``.
+    """
+    bucket = os.getenv("S3_BUCKET")
+    if not bucket:
+        return None
+    try:
+        import boto3
+        # Resolve student identifier from the profile – default to "unknown"
+        profile = load_profile()
+        student_id = profile.get("student_id", "unknown")
+        # Build a deterministic key that isolates each user's docs
+        key = f"students/{student_id}/documents/{doc_type}/{Path(local_path).name}"
+        s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        s3.upload_file(local_path, bucket, key)
+        return f"s3://{bucket}/{key}"
+    except Exception:
+        return None
+
+
+
 def resolve_document_path(doc_type: str) -> str | None:
-    """Absolute path of a VERIFIED profile document, or None."""
+    """Absolute path of a VERIFIED profile document, or None.
+    
+    Supports local file system and Amazon S3 document retrieval (Phase 16).
+    """
     profile = load_profile()
     docs = profile.get("documents")
     if field_state(docs) != "verified":
@@ -108,7 +163,24 @@ def resolve_document_path(doc_type: str) -> str | None:
     path = Path(rel)
     if not path.is_absolute():
         path = PROJECT_ROOT / path
-    return str(path) if path.exists() else None
+    if path.exists():
+        return str(path)
+
+    # Check S3 if file not found locally
+    bucket = os.getenv("S3_BUCKET")
+    if bucket:
+        try:
+            import boto3
+            student_id = profile.get("student_id", "unknown")
+            key = f"students/{student_id}/documents/{doc_type}/{path.name}"
+            s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            s3.download_file(bucket, key, str(path))
+            if path.exists():
+                return str(path)
+        except Exception:
+            pass
+    return None
 
 
 def student_confirm_field(field: str, value: Any = None) -> dict[str, Any]:
