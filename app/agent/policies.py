@@ -78,9 +78,29 @@ def check_fill_allowed(
          classified as auto_fill for exactly this label.
     Anything else — including a value the model made up — is refused.
     """
+    import re
+    def _norm(s: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"\(.*?\)|[*:?]", " ", str(s).lower())).strip()
+
+    target_norm = _norm(field_label)
+
+    # 1. Check answers provided by the student
     if field_label in answers and _same(value, answers[field_label]):
         return True, "student-provided answer"
+    for ans_lbl, ans_val in answers.items():
+        norm_ans = _norm(ans_lbl)
+        if norm_ans == target_norm or target_norm in norm_ans or norm_ans in target_norm:
+            if _same(value, ans_val) or str(value).strip().lower() == str(ans_val).strip().lower():
+                return True, "student-provided answer"
+
+    # 2. Check mappings
     mapping = mappings.get(field_label)
+    if mapping is None:
+        for m_lbl, m_data in mappings.items():
+            if _norm(m_lbl) == target_norm:
+                mapping = m_data
+                break
+
     if mapping is None:
         return False, f"'{field_label}' has not been through map_form_field yet."
     if mapping["risk"] == RiskLevel.HIGH.value or mapping["action"] == "ask_student":

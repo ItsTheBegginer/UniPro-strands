@@ -184,11 +184,23 @@ def provide_answer(application_id: str, answer: str) -> dict[str, Any]:
         state.record("student_responded", field=label)
         state.transition(S.RUNNING, note="student responded")
         state.record("agent_resumed")
-        prompt = (
-            f"The student has responded to '{label}'. "
-            + ("They completed the challenge manually. " if is_challenge else "Their answer is stored; ")
-            + "Continue the application from where you left off.\n" + _resume_brief(s)
-        )
+        if is_challenge:
+            prompt = (
+                f"The student has responded and completed the '{label}' challenge manually.\n"
+                f"Continue the application from where you left off.\n" + _resume_brief(s)
+            )
+        else:
+            prompt = (
+                f"The student has responded with their answer for '{label}': '{answer}'.\n"
+                f"IMMEDIATE REQUIRED ACTIONS:\n"
+                f"1. On the current form page, call select_option or fill_field to enter '{answer}' for field '{label}'. "
+                f"If '{label}' is a radio group or select dropdown, call select_option(selector, '{answer}', '{label}'). "
+                f"If '{label}' is a text field, call fill_field(selector, '{answer}', '{label}').\n"
+                f"2. Fill any remaining uncompleted fields on this page.\n"
+                f"3. Call click_button on '#save-continue' to advance to the next step.\n"
+                f"Do NOT ask the student again for '{label}'.\n"
+                + _resume_brief(s)
+            )
     finally:
         state.deactivate()
     return _run_agent(application_id, prompt)

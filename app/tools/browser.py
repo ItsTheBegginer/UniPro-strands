@@ -46,7 +46,7 @@ _INSPECT_JS = r"""
       return st.display !== 'none' && st.visibility !== 'hidden' && (r.width > 0 || r.height > 0); };
   const fields = [], seenRadio = new Set();
   document.querySelectorAll('input, select, textarea').forEach((el) => {
-    if (el.type === 'hidden' || !visible(el)) return;
+    if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button' || el.type === 'reset' || !visible(el)) return;
     if (el.type === 'radio') {
       if (seenRadio.has(el.name)) return; seenRadio.add(el.name);
       const group = [...document.querySelectorAll('input[type=radio][name="' + el.name + '"]')];
@@ -123,12 +123,23 @@ class BrowserSession:
 
     def select(self, selector: str, value: str) -> str:
         page = self._page_or_start()
-        if page.locator(selector).first.get_attribute("type") == "radio":
-            values = page.eval_on_selector_all(selector, "els => els.map(e => e.value)")
-            match = next((v for v in values if v.lower() == value.strip().lower()), None)
+        first = page.locator(selector).first
+        if first.get_attribute("type") == "radio":
+            val_clean = str(value).strip().lower()
+            name = first.get_attribute("name")
+            group_sel = f'input[type="radio"][name="{name}"]' if name else selector
+            options = page.eval_on_selector_all(
+                group_sel,
+                "els => els.map(e => ({ value: e.value, label: (e.labels && e.labels[0] ? e.labels[0].innerText.trim() : '') }))",
+            )
+            match = next(
+                (opt["value"] for opt in options if opt["value"].lower() == val_clean or opt["label"].lower() == val_clean),
+                None,
+            )
             if match is None:
-                raise ValueError(f"No option '{value}'. Options: {values}")
-            page.check(f'{selector}[value="{match}"]', timeout=5000)
+                match = first.get_attribute("value") or val_clean
+            check_sel = f'{group_sel}[value="{match}"]'
+            page.check(check_sel, timeout=5000)
             return match
         page.select_option(selector, value, timeout=5000)
         return value

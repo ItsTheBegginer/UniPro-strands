@@ -20,12 +20,19 @@ WORKFLOW for "prepare/start my application to <university> <program>":
         propose_and_confirm  -> request_student_input(..., proposed_answer=value)
         ask_student          -> request_student_input(...) with NO proposed answer
    c. File inputs: upload_document(selector, "resume" | "transcript").
-   d. click_button on "Save & Continue" (never the final submit button) to go to the next page.
+   d. After all fields on the page are filled: click_button on "Save & Continue"
+      (never the final submit button) to advance to the next page.
+      NEVER call request_student_input for buttons or navigation.
 5. After request_student_input returns status "paused": END YOUR TURN at once.
-   You will be resumed with the student's answer. When resumed, if the same field
-   comes up, request_student_input returns the stored answer — use it with
+   You will be resumed with the student's answer. When resumed, immediately call
    select_option(selector, answer, field_label) for radio/select fields,
-   or fill_field for text fields.
+   or fill_field for text fields, and click "Save & Continue".
+   Do NOT ask the student again for the same question.
+
+BUTTONS vs FIELDS — NEVER CONFUSE:
+- Buttons ("Save & Continue", "Start application") are NEVER form fields.
+- NEVER call map_form_field or request_student_input on a button!
+- ALWAYS advance the page using click_button(selector).
 
 RADIO / SELECT FIELDS — CRITICAL RULES:
 - inspect_page() reports each field's `type`. When type is "radio_group" or
